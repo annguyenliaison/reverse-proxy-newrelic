@@ -1,0 +1,57 @@
+---
+
+- hosts: localhost
+  connection: local
+  tasks:
+  - add_host:
+      name: "{{ hostname }}"
+      group: target
+    no_log: true
+
+- hosts: target
+  become: yes
+  vars:
+    proxy_ip: 10.159.137.207 #The IP of the proxy itself
+    via_proxy_name: nrproxy #The name the proxy presents
+
+  tasks:
+     
+# Install tinyproxy & Setup config file from Template
+    - name: Install Tinyproxy 
+      yum:
+        name: tinyproxy
+        state: latest
+        
+    - name: Set up the New Relic config file from template
+      template:
+        src: "./tinyproxy.conf.j2"
+        dest: "/etc/tinyproxy/tinyproxy.conf"
+        owner: "tinyproxy"
+        group: "tinyproxy"
+        mode: "0775"
+      tags:
+        - reverse-proxy
+
+# Add List of Ranges for the Proxy
+    - name: Add Allowed IPs to Tinyproxy config
+      blockinfile:
+        path: /etc/tinyproxy/tinyproxy.conf
+        block: |
+          Allow {{ item.ip }}
+        marker: "# {mark} ANSIBLE MANAGED BLOCK ALLOWED IPs"
+      with_items:
+      - { ip: 10.156.9.61/24 } # BOSS Node 1 in AT4 Staging for Testing
+      - { ip: 10.153.9.0/24 } # UAT Range (1)
+      - { ip: 10.153.18.0/24 } # UAT Range (2)
+      - { ip: 10.153.20.0/24 } # UAT Range (3)
+      - { ip: 10.153.22.0/24 } # UAT Range (4)
+      #- { ip: 10.153.9.0/24 } # PROD Range (1)
+      #- { ip: 10.153.9.0/24 } # PROD Range (2)
+      #- { ip: 10.153.9.0/24 } # PROD Range (3)
+      #- { ip: 10.153.9.0/24 } # PROD Range (4)
+
+# Start Tiny Proxy
+    - name: Start Tinyproxy
+      service:
+        name: tinyproxy
+        state: started
